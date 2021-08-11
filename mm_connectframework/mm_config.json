@@ -1,0 +1,21 @@
+{
+	"name": "mirrormaker2-confluent-kafka-to-azure-eventhub-sbx",
+	"config": {
+		"source.bootstrap.servers": "kafka.confluent.svc.cluster.local:9071",
+		"source.sasl.jaas.config": "org.apache.kafka.common.security.plain.PlainLoginModule required username=username password=password;",
+		"source.sasl.mechanism": "PLAIN",
+		"source.security.protocol": "SASL_SSL",
+		"source.ssl.truststore.location": "/mnt/sslcerts/truststore.p12",
+	  	"source.group.id": "mirrormaker-azure",
+		"source.exclude.internal.topics": "true",
+		"source.client.id": "mirrormaker-azure_consumer",
+		"source.partition.assignment.strategy": "org.apache.kafka.clients.consumer.RoundRobinAssignor",
+		"source.auto.offset.reset": "earliest",
+		"source.ssl.truststore.password": "mystorepassword",
+		"target.bootstrap.servers": "sbx-kafka-poc.servicebus.windows.net:9093",
+		"target.client.id": "mirrormaker-azure_producer",
+		"target.sasl.mechanism": "PLAIN",
+		"target.security.protocol": "SASL_SSL",
+		"target.sasl.jaas.config": "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"$ConnectionString\" password=\"Endpoint=sb://sbx-kafka-poc.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=yfq1zsx+FXlaVe1oKrHAkRv7G6+9feI5yrqVYKIVFvY=\";"
+        }	
+}

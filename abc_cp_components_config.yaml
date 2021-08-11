@@ -1,0 +1,288 @@
+apiVersion: platform.confluent.io/v1beta1
+kind: Zookeeper
+metadata:
+  name: zookeeper
+  namespace: confluent
+spec:
+  replicas: 3
+  image:
+    application: etsppci4d002.npd.amerisourcebergen.com/confluentinc/cp-zookeeper:6.2.0
+    init: etsppci4d002.npd.amerisourcebergen.com/confluentinc/confluent-init-container:2.0.1
+  dataVolumeCapacity: 10Gi
+  logVolumeCapacity: 10Gi
+  authentication:
+    type: digest
+    jaasConfig:
+      secretRef: credential
+  tls:
+    secretRef: kafka-tls
+---
+apiVersion: platform.confluent.io/v1beta1
+kind: Kafka
+metadata:
+  name: kafka
+  namespace: confluent
+spec:
+  replicas: 3
+  image:
+    application: etsppci4d002.npd.amerisourcebergen.com/confluentinc/cp-server:6.2.0
+    init: etsppci4d002.npd.amerisourcebergen.com/confluentinc/confluent-init-container:2.0.1
+  dataVolumeCapacity: 250Gi
+  metricReporter:
+    authentication:
+      jaasConfig:
+        secretRef: credential
+      type: plain
+    enabled: true
+    tls:
+      enabled: true
+  tls:
+    secretRef: kafka-tls
+  listeners:
+    internal:
+      authentication:
+        type: plain
+        jaasConfig:
+          secretRef: credential
+      tls:
+        enabled: true
+    external:
+      externalAccess:
+        type: nodePort
+        nodePort:
+          nodePortOffset: 30010
+          host: rke-bootstrap.npd.amerisourcebergen.com
+      authentication:
+        type: plain
+        jaasConfig:
+          secretRef: credential
+      tls:
+        enabled: true  
+  dependencies:
+    zookeeper:
+      endpoint: zookeeper.confluent.svc.cluster.local:2182
+      tls:
+        enabled: true
+---
+apiVersion: platform.confluent.io/v1beta1
+kind: Connect
+metadata:
+  name: connect
+  namespace: confluent
+spec:
+  replicas: 2
+  image:
+    application: etsppci4d002.npd.amerisourcebergen.com/confluentinc/cp-server-connect:6.2.0
+    init: etsppci4d002.npd.amerisourcebergen.com/confluentinc/confluent-init-container:2.0.1
+  dependencies:
+    kafka:
+      bootstrapEndpoint: kafka.confluent.svc.cluster.local:9071
+      authentication:
+        type: plain
+        jaasConfig:
+          secretRef: credential
+      tls:
+        enabled: true
+  tls:
+    secretRef: kafka-tls
+---
+apiVersion: platform.confluent.io/v1beta1
+# Confluent Replicator is built as a connector, and so will use the `Connect` CRD.
+kind: Connect
+metadata:
+  name: replicator
+  namespace: confluent
+spec:
+  replicas: 1
+  image:
+    application: etsppci4d002.npd.amerisourcebergen.com/confluentinc/cp-enterprise-replicator:6.2.0
+    init: etsppci4d002.npd.amerisourcebergen.com/confluentinc/confluent-init-container:2.0.1
+  dependencies:
+    kafka:
+      bootstrapEndpoint: kafka.confluent.svc.cluster.local:9071
+      authentication:
+        type: plain
+        jaasConfig:
+          secretRef: credential
+      tls:
+        enabled: true
+  tls:
+    secretRef: kafka-tls
+---
+apiVersion: platform.confluent.io/v1beta1
+kind: KsqlDB
+metadata:
+  name: ksqldb
+  namespace: confluent
+spec:
+  replicas: 2
+  image:
+    application: etsppci4d002.npd.amerisourcebergen.com/confluentinc/cp-ksqldb-server:6.2.0
+    init: etsppci4d002.npd.amerisourcebergen.com/confluentinc/confluent-init-container:2.0.1
+  dataVolumeCapacity: 10Gi
+  tls:
+    secretRef: kafka-tls
+  dependencies:
+    kafka:
+      bootstrapEndpoint: kafka.confluent.svc.cluster.local:9071
+      authentication:
+        type: plain
+        jaasConfig:
+          secretRef: credential
+      tls:
+        enabled: true
+---
+apiVersion: platform.confluent.io/v1beta1
+kind: ControlCenter
+metadata:
+  name: controlcenter
+  namespace: confluent
+spec:
+  replicas: 1
+  image:
+    application: etsppci4d002.npd.amerisourcebergen.com/confluentinc/cp-enterprise-control-center:6.2.0
+    init: etsppci4d002.npd.amerisourcebergen.com/confluentinc/confluent-init-container:2.0.1
+  dataVolumeCapacity: 10Gi
+  authentication:
+    type: basic
+    basic:
+      secretRef: ccc-credential
+  dependencies:
+    kafka:
+      bootstrapEndpoint: kafka.confluent.svc.cluster.local:9071
+      authentication:
+        type: plain
+        jaasConfig:
+          secretRef: credential
+      tls:
+        enabled: true
+    schemaRegistry:
+      url: https://schemaregistry.confluent.svc.cluster.local:8081
+      tls:
+        enabled: true
+    ksqldb:
+      - name: ksqldb
+        url: https://ksqldb.confluent.svc.cluster.local:8088
+        tls:
+          enabled: true
+    connect:
+      - name: connect
+        url: https://connect.confluent.svc.cluster.local:8083
+        tls:
+          enabled: true
+      - name: kafkaconnecthana
+        url: https://kafkaconnecthana.confluent.svc.cluster.local:8083
+        tls:
+          enabled: true
+      - name: replicator
+        url: https://replicator.confluent.svc.cluster.local:8083
+        tls:
+          enabled: true
+      - name: kafkamirrormaker
+        url: https://kafkamirrormaker.confluent.svc.cluster.local:8083
+        tls:
+          enabled: true
+  tls:
+    secretRef: kafka-tls
+  externalAccess:
+    type: nodePort
+    nodePort:
+      nodePortOffset: 30000 
+      host: rke-controlcenter.npd.amerisourcebergen.com 	
+---
+apiVersion: platform.confluent.io/v1beta1
+kind: SchemaRegistry
+metadata:
+  name: schemaregistry
+  namespace: confluent
+spec:
+  replicas: 2
+  image:
+    application: etsppci4d002.npd.amerisourcebergen.com/confluentinc/cp-schema-registry:6.2.0
+    init: etsppci4d002.npd.amerisourcebergen.com/confluentinc/confluent-init-container:2.0.1
+  tls:
+    secretRef: kafka-tls
+  dependencies:
+    kafka:
+      bootstrapEndpoint: kafka.confluent.svc.cluster.local:9071
+      authentication:
+        type: plain
+        jaasConfig:
+          secretRef: credential
+      tls:
+        enabled: true
+  externalAccess:
+    type: nodePort
+    nodePort:
+      nodePortOffset: 30001 
+      host: rke-schemaregistry.npd.amerisourcebergen.com 	
+---
+apiVersion: platform.confluent.io/v1beta1
+kind: Connect
+metadata:
+  name: kafkaconnecthana
+  namespace: confluent
+spec:
+  replicas: 1
+  image:
+    application: etsppci4d002.npd.amerisourcebergen.com/confluentinc/kafka-connector-hana:2.13-0.9.1
+    init: etsppci4d002.npd.amerisourcebergen.com/confluentinc/confluent-init-container:2.0.1
+  dependencies:
+    kafka:
+      bootstrapEndpoint: kafka.confluent.svc.cluster.local:9071
+      authentication:
+        type: plain
+        jaasConfig:
+          secretRef: credential
+      tls:
+        enabled: true
+    schemaRegistry:
+      url: https://schemaregistry.confluent.svc.cluster.local:8081
+      tls:
+        enabled: true
+  tls:
+    secretRef: kafka-tls
+  externalAccess:
+    type: nodePort
+    nodePort:
+      nodePortOffset: 30002
+      host: rke-connecthana.npd.amerisourcebergen.com
+  configOverrides:
+    server:
+      - key.converter=io.confluent.connect.avro.AvroConverter
+      - value.converter=io.confluent.connect.avro.AvroConverter
+      - key.converter.schemas.enable=true
+      - value.converter.schemas.enable=true
+      - key.converter.schema.registry.url=https://schemaregistry.confluent.svc.cluster.local:8081
+      - value.converter.schema.registry.url=https://schemaregistry.confluent.svc.cluster.local:8081
+---
+apiVersion: platform.confluent.io/v1beta1
+kind: Connect
+metadata:
+  name: kafkamirrormaker
+  namespace: confluent
+spec:
+  replicas: 1
+  image:
+    application: etsppci4d002.npd.amerisourcebergen.com/confluentinc/kafka-mirrormaker2:latest1
+    init: etsppci4d002.npd.amerisourcebergen.com/confluentinc/confluent-init-container:2.0.1
+  dependencies:
+    kafka:
+      bootstrapEndpoint: kafka.confluent.svc.cluster.local:9071
+      authentication:
+        type: plain
+        jaasConfig:
+          secretRef: credential
+      tls:
+        enabled: true
+    schemaRegistry:
+      url: https://schemaregistry.confluent.svc.cluster.local:8081
+      tls:
+        enabled: true
+  tls:
+    secretRef: kafka-tls
+  externalAccess:
+    type: nodePort
+    nodePort:
+      nodePortOffset: 30003
+      host: rke-connecthana.npd.amerisourcebergen.com
